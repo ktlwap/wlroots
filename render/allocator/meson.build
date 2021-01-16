@@ -1,6 +1,6 @@
 allocators = get_option('allocators')
 if 'auto' in allocators and get_option('auto_features').enabled()
-	allocators = ['gbm']
+	allocators = ['gbm', 'vulkan']
 elif 'auto' in allocators and get_option('auto_features').disabled()
 	allocators = []
 endif
@@ -22,4 +22,14 @@ if gbm.found()
 
 	has = cc.has_function('gbm_bo_get_fd_for_plane', dependencies: [gbm])
 	internal_config.set10('HAVE_GBM_BO_GET_FD_FOR_PLANE', has)
+endif
+
+vulkan = disabler()
+if 'vulkan' in allocators or 'auto' in allocators
+	vulkan = dependency('vulkan', required: 'vulkan' in allocators)
+endif
+if vulkan.found()
+	wlr_files += files('vulkan.c')
+	wlr_deps += vulkan
+	features += { 'vulkan-allocator': true }
 endif

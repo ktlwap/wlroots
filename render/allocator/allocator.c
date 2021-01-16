@@ -19,6 +19,10 @@
 #include "render/allocator/gbm.h"
 #endif
 
+#if WLR_HAS_VULKAN_ALLOCATOR
+#include "render/allocator/vulkan.h"
+#endif
+
 void wlr_allocator_init(struct wlr_allocator *alloc,
 		const struct wlr_allocator_interface *impl, uint32_t buffer_caps) {
 	assert(impl && impl->destroy && impl->create_buffer);
@@ -98,6 +102,19 @@ struct wlr_allocator *allocator_autocreate_with_drm_fd(
 	uint32_t renderer_caps = renderer_get_render_buffer_caps(renderer);
 
 	struct wlr_allocator *alloc = NULL;
+
+	// TODO: disable by default
+#if WLR_HAS_VULKAN_ALLOCATOR
+	uint32_t vk_caps = WLR_BUFFER_CAP_DMABUF;
+	if ((backend_caps & vk_caps) && (renderer_caps & vk_caps)
+			&& drm_fd >= 0) {
+		wlr_log(WLR_DEBUG, "Trying to create Vulkan allocator");
+		if ((alloc = wlr_vulkan_allocator_create(drm_fd)) != NULL) {
+			return alloc;
+		}
+		wlr_log(WLR_DEBUG, "Failed to create Vulkan allocator");
+	}
+#endif
 
 #if WLR_HAS_GBM_ALLOCATOR
 	uint32_t gbm_caps = WLR_BUFFER_CAP_DMABUF;
