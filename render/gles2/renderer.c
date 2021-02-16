@@ -780,6 +780,19 @@ struct wlr_renderer *wlr_gles2_renderer_create(struct wlr_egl *egl) {
 			"glEGLImageTargetRenderbufferStorageOES");
 	}
 
+	renderer->exts.NV_pixel_buffer_object =
+		check_gl_ext(exts_str, "GL_NV_pixel_buffer_object");
+
+	if (check_gl_ext(exts_str, "GL_OES_mapbuffer")) {
+		renderer->exts.OES_mapbuffer = true;
+		load_gl_proc(&renderer->procs.glUnmapBufferOES, "glUnmapBufferOES");
+	}
+	if (check_gl_ext(exts_str, "GL_EXT_map_buffer_range")) {
+		renderer->exts.EXT_map_buffer_range = true;
+		load_gl_proc(&renderer->procs.glMapBufferRangeEXT,
+			"glMapBufferRangeEXT");
+	}
+
 	if (renderer->exts.KHR_debug) {
 		glEnable(GL_DEBUG_OUTPUT_KHR);
 		glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS_KHR);

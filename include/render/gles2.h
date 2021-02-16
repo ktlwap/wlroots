@@ -48,6 +48,9 @@ struct wlr_gles2_renderer {
 		bool EXT_texture_type_2_10_10_10_REV;
 		bool OES_texture_half_float_linear;
 		bool EXT_texture_norm16;
+		bool NV_pixel_buffer_object;
+		bool OES_mapbuffer;
+		bool EXT_map_buffer_range;
 	} exts;
 
 	struct {
@@ -57,6 +60,8 @@ struct wlr_gles2_renderer {
 		PFNGLPOPDEBUGGROUPKHRPROC glPopDebugGroupKHR;
 		PFNGLPUSHDEBUGGROUPKHRPROC glPushDebugGroupKHR;
 		PFNGLEGLIMAGETARGETRENDERBUFFERSTORAGEOESPROC glEGLImageTargetRenderbufferStorageOES;
+		PFNGLMAPBUFFERRANGEEXTPROC glMapBufferRangeEXT;
+		PFNGLUNMAPBUFFEROESPROC glUnmapBufferOES;
 	} procs;
 
 	struct {
