@@ -329,6 +329,7 @@ static bool egl_init_display(struct wlr_egl *egl, EGLDisplay *display) {
 		load_egl_proc(&egl->procs.eglDestroySyncKHR, "eglDestroySyncKHR");
 		load_egl_proc(&egl->procs.eglDupNativeFenceFDANDROID,
 			"eglDupNativeFenceFDANDROID");
+		load_egl_proc(&egl->procs.eglClientWaitSyncKHR, "eglClientWaitSyncKHR");
 	}
 
 	if (check_egl_ext(display_exts_str, "EGL_KHR_wait_sync")) {
