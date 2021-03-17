@@ -10,5 +10,5 @@ wlr_files += files(
 	'shm.c',
 	'time.c',
 	'token.c',
+	'trace.c',
 )
-
