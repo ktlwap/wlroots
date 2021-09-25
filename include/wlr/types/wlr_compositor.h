@@ -262,7 +262,7 @@ void wlr_surface_send_frame_done(struct wlr_surface *surface,
  * surface coordinates.
  * X and y may be negative, if there are subsurfaces with negative position.
  */
-void wlr_surface_get_extends(struct wlr_surface *surface, struct wlr_box *box);
+void wlr_surface_get_extents(struct wlr_surface *surface, struct wlr_box *box);
 
 /**
  * Get the struct wlr_surface corresponding to a wl_surface resource.
