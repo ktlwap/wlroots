@@ -36,7 +36,9 @@ static const uint32_t COMMIT_OUTPUT_STATE =
 	WLR_OUTPUT_STATE_BUFFER |
 	WLR_OUTPUT_STATE_MODE |
 	WLR_OUTPUT_STATE_ENABLED |
-	WLR_OUTPUT_STATE_GAMMA_LUT;
+	WLR_OUTPUT_STATE_GAMMA_LUT |
+	WLR_OUTPUT_STATE_WAIT_TIMELINE |
+	WLR_OUTPUT_STATE_SIGNAL_TIMELINE;
 
 static const uint32_t SUPPORTED_OUTPUT_STATE =
 	WLR_OUTPUT_STATE_BACKEND_OPTIONAL | COMMIT_OUTPUT_STATE;
@@ -489,6 +491,13 @@ static bool drm_connector_test(struct wlr_output *output,
 				"Can't enable an output without a mode");
 			return false;
 		}
+	}
+
+	if ((output->pending.committed & (WLR_OUTPUT_STATE_WAIT_TIMELINE |
+			WLR_OUTPUT_STATE_SIGNAL_TIMELINE)) && conn->backend->parent) {
+		wlr_drm_conn_log(conn, WLR_DEBUG,
+			"Sync timelines are unsupported in multi-GPU mode");
+		return false;
 	}
 
 	struct wlr_drm_connector_state pending = {0};
