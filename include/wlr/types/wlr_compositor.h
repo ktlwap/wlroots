@@ -66,8 +66,8 @@ struct wlr_surface_state {
 	} viewport;
 
 	// Number of locks that prevent this surface state from being committed.
-	size_t cached_state_locks;
-	struct wl_list cached_state_link; // wlr_surface.cached
+	size_t n_locks;
+	struct wl_list link; // wlr_surface.states
 };
 
 struct wlr_surface_role {
@@ -135,8 +135,6 @@ struct wlr_surface {
 	 */
 	struct wlr_surface_state current, pending;
 
-	struct wl_list cached; // wlr_surface_state.cached_link
-
 	const struct wlr_surface_role *role; // the lifetime-bound role or NULL
 	void *role_data; // role-specific data
 
@@ -153,6 +151,12 @@ struct wlr_surface {
 	void *data;
 
 	// private state
+
+	/**
+	* The queue of all states the surface has. The current state is always
+	* the first and the pending state is always the last.
+	*/
+	struct wl_list states; // wlr_surface_state.link
 
 	struct wl_listener renderer_destroy;
 
