@@ -253,6 +253,47 @@ static const struct xdg_surface_interface xdg_surface_implementation = {
 	.set_window_geometry = xdg_surface_handle_set_window_geometry,
 };
 
+static void xdg_surface_synced_destroy(struct wlr_surface_synced *synced) {
+	struct wlr_xdg_surface *surface =
+		wl_container_of(synced, surface, synced);
+	destroy_xdg_surface(surface);
+}
+
+static void xdg_surface_synced_squash_state(
+		struct wlr_surface_synced_state *synced_dst,
+		struct wlr_surface_synced_state *synced_src) {
+	struct wlr_xdg_surface_state *dst =
+		wl_container_of(synced_dst, dst, synced_state);
+	struct wlr_xdg_surface_state *src =
+		wl_container_of(synced_src, src, synced_state);
+
+	dst->configure_serial = src->configure_serial;
+	dst->geometry = src->geometry;
+}
+
+static struct wlr_surface_synced_state *xdg_surface_synced_create_state(void) {
+	struct wlr_xdg_surface_state *state = calloc(1, sizeof(*state));
+	if (!state) {
+		return NULL;
+	}
+	return &state->synced_state;
+}
+
+static void xdg_surface_synced_destroy_state(
+		struct wlr_surface_synced_state *synced_state) {
+	struct wlr_xdg_surface_state *state =
+		wl_container_of(synced_state, state, synced_state);
+	free(state);
+}
+
+static const struct wlr_surface_synced_interface xdg_surface_synced_impl = {
+	.name = "wlr_xdg_surface",
+	.destroy = xdg_surface_synced_destroy,
+	.squash_state = xdg_surface_synced_squash_state,
+	.create_state = xdg_surface_synced_create_state,
+	.destroy_state = xdg_surface_synced_destroy_state,
+};
+
 static void xdg_surface_handle_resource_destroy(struct wl_resource *resource) {
 	struct wlr_xdg_surface *surface =
 		wlr_xdg_surface_from_resource(resource);
@@ -289,8 +330,6 @@ void xdg_surface_role_commit(struct wlr_surface *wlr_surface) {
 	if (surface == NULL) {
 		return;
 	}
-
-	surface->current = surface->pending;
 
 	switch (surface->role) {
 	case WLR_XDG_SURFACE_ROLE_NONE:
@@ -332,13 +371,6 @@ void xdg_surface_role_precommit(struct wlr_surface *wlr_surface,
 	}
 }
 
-static void xdg_surface_handle_surface_destroy(struct wl_listener *listener,
-		void *data) {
-	struct wlr_xdg_surface *xdg_surface =
-		wl_container_of(listener, xdg_surface, surface_destroy);
-	destroy_xdg_surface(xdg_surface);
-}
-
 struct wlr_xdg_surface *create_xdg_surface(
 		struct wlr_xdg_client *client, struct wlr_surface *wlr_surface,
 		uint32_t id) {
@@ -349,6 +381,15 @@ struct wlr_xdg_surface *create_xdg_surface(
 		return NULL;
 	}
 
+	if (!wlr_surface_synced_init(&surface->synced,
+			&xdg_surface_synced_impl, wlr_surface,
+			&surface->current.synced_state,
+			&surface->pending.synced_state)) {
+		free(surface);
+		wl_client_post_no_memory(client->client);
+		return NULL;
+	};
+
 	surface->client = client;
 	surface->role = WLR_XDG_SURFACE_ROLE_NONE;
 	surface->surface = wlr_surface;
@@ -356,12 +397,14 @@ struct wlr_xdg_surface *create_xdg_surface(
 		&xdg_surface_interface, wl_resource_get_version(client->resource),
 		id);
 	if (surface->resource == NULL) {
+		wlr_surface_synced_finish(&surface->synced);
 		free(surface);
 		wl_client_post_no_memory(client->client);
 		return NULL;
 	}
 
 	if (wlr_surface_has_buffer(surface->surface)) {
+		wlr_surface_synced_finish(&surface->synced);
 		wl_resource_destroy(surface->resource);
 		free(surface);
 		wl_resource_post_error(client->resource,
@@ -369,6 +412,7 @@ struct wlr_xdg_surface *create_xdg_surface(
 			"xdg_surface must not have a buffer at creation");
 		return NULL;
 	}
+
 
 	wl_list_init(&surface->configure_list);
 	wl_list_init(&surface->popups);
@@ -380,10 +424,6 @@ struct wlr_xdg_surface *create_xdg_surface(
 	wl_signal_init(&surface->events.unmap);
 	wl_signal_init(&surface->events.configure);
 	wl_signal_init(&surface->events.ack_configure);
-
-	wl_signal_add(&surface->surface->events.destroy,
-		&surface->surface_destroy);
-	surface->surface_destroy.notify = xdg_surface_handle_surface_destroy;
 
 	wl_signal_add(&surface->surface->events.commit,
 		&surface->surface_commit);
@@ -433,11 +473,12 @@ void reset_xdg_surface(struct wlr_xdg_surface *surface) {
 void destroy_xdg_surface(struct wlr_xdg_surface *surface) {
 	reset_xdg_surface(surface);
 
+	wlr_surface_synced_finish(&surface->synced);
+
 	wl_resource_set_user_data(surface->resource, NULL);
 	surface->surface->role_data = NULL;
 
 	wl_list_remove(&surface->link);
-	wl_list_remove(&surface->surface_destroy.link);
 	wl_list_remove(&surface->surface_commit.link);
 	free(surface);
 }
