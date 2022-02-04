@@ -451,6 +451,7 @@ void reset_xdg_surface(struct wlr_xdg_surface *surface) {
 
 	switch (surface->role) {
 	case WLR_XDG_SURFACE_ROLE_TOPLEVEL:
+		wlr_surface_synced_finish(&surface->toplevel->synced);
 		wl_resource_set_user_data(surface->toplevel->resource, NULL);
 		free(surface->toplevel);
 		surface->toplevel = NULL;
