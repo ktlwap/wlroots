@@ -278,10 +278,10 @@ static void layer_surface_destroy(struct wlr_layer_surface_v1 *surface) {
 	if (surface->configured && surface->mapped) {
 		layer_surface_unmap(surface);
 	}
+	wlr_surface_synced_finish(&surface->synced);
 	wlr_signal_emit_safe(&surface->events.destroy, surface);
 	wl_resource_set_user_data(surface->resource, NULL);
 	surface->surface->role_data = NULL;
-	wl_list_remove(&surface->surface_destroy.link);
 	free(surface->namespace);
 	free(surface);
 }
@@ -346,9 +346,6 @@ static void layer_surface_role_commit(struct wlr_surface *wlr_surface) {
 		return;
 	}
 
-	surface->current = surface->pending;
-	surface->pending.committed = 0;
-
 	if (wlr_surface_has_buffer(surface->surface) && !surface->configured) {
 		wl_resource_post_error(surface->resource,
 			ZWLR_LAYER_SHELL_V1_ERROR_ALREADY_CONSTRUCTED,
@@ -395,12 +392,66 @@ static const struct wlr_surface_role layer_surface_role = {
 	.precommit = layer_surface_role_precommit,
 };
 
-static void handle_surface_destroyed(struct wl_listener *listener,
-		void *data) {
-	struct wlr_layer_surface_v1 *layer_surface =
-		wl_container_of(listener, layer_surface, surface_destroy);
-	layer_surface_destroy(layer_surface);
+static void layer_surface_synced_destroy(struct wlr_surface_synced *synced) {
+	struct wlr_layer_surface_v1 *surface =
+		wl_container_of(synced, surface, synced);
+	layer_surface_destroy(surface);
 }
+
+static void layer_surface_synced_squash_state(
+		struct wlr_surface_synced_state *synced_dst,
+		struct wlr_surface_synced_state *synced_src) {
+	struct wlr_layer_surface_v1_state *dst =
+		wl_container_of(synced_dst, dst, synced_state);
+	struct wlr_layer_surface_v1_state *src =
+		wl_container_of(synced_src, src, synced_state);
+
+	dst->committed |= src->committed;
+	src->committed = 0;
+
+	dst->anchor = src->anchor;
+	dst->exclusive_zone = src->exclusive_zone;
+	dst->margin = src->margin;
+	dst->keyboard_interactive = src->keyboard_interactive;
+	dst->desired_width = src->desired_width;
+	dst->desired_height = src->desired_height;
+	dst->layer = src->layer;
+
+	dst->configure_serial = src->configure_serial;
+	dst->actual_width = src->actual_width;
+	dst->actual_height = src->actual_height;
+}
+
+static struct wlr_surface_synced_state *layer_surface_synced_create_state(void) {
+	struct wlr_layer_surface_v1_state *state = calloc(1, sizeof(*state));
+	if (!state) {
+		return NULL;
+	}
+	return &state->synced_state;
+}
+
+static void layer_surface_synced_destroy_state(
+		struct wlr_surface_synced_state *synced_state) {
+	struct wlr_layer_surface_v1_state *state =
+		wl_container_of(synced_state, state, synced_state);
+	free(state);
+}
+
+static void layer_surface_synced_precommit(struct wlr_surface_synced *synced,
+		struct wlr_surface_synced_state *synced_state) {
+	struct wlr_layer_surface_v1 *surface =
+		wl_container_of(synced, surface, synced);
+	surface->current.committed = 0;
+}
+
+static const struct wlr_surface_synced_interface layer_surface_synced_impl = {
+	.name = "wlr_layer_surface_v1",
+	.destroy = layer_surface_synced_destroy,
+	.squash_state = layer_surface_synced_squash_state,
+	.create_state = layer_surface_synced_create_state,
+	.destroy_state = layer_surface_synced_destroy_state,
+	.precommit = layer_surface_synced_precommit,
+};
 
 static void layer_shell_handle_get_layer_surface(struct wl_client *wl_client,
 		struct wl_resource *client_resource, uint32_t id,
@@ -444,11 +495,21 @@ static void layer_shell_handle_get_layer_surface(struct wl_client *wl_client,
 		wl_client_post_no_memory(wl_client);
 		return;
 	}
+	if (!wlr_surface_synced_init(&surface->synced,
+			&layer_surface_synced_impl, wlr_surface,
+			&surface->current.synced_state,
+			&surface->pending.synced_state)) {
+		free(surface->namespace);
+		free(surface);
+		wl_client_post_no_memory(wl_client);
+		return;
+	}
 	surface->resource = wl_resource_create(wl_client,
 		&zwlr_layer_surface_v1_interface,
 		wl_resource_get_version(client_resource),
 		id);
 	if (surface->resource == NULL) {
+		wlr_surface_synced_finish(&surface->synced);
 		free(surface->namespace);
 		free(surface);
 		wl_client_post_no_memory(wl_client);
@@ -462,10 +523,6 @@ static void layer_shell_handle_get_layer_surface(struct wl_client *wl_client,
 	wl_signal_init(&surface->events.map);
 	wl_signal_init(&surface->events.unmap);
 	wl_signal_init(&surface->events.new_popup);
-
-	wl_signal_add(&surface->surface->events.destroy,
-		&surface->surface_destroy);
-	surface->surface_destroy.notify = handle_surface_destroyed;
 
 	wlr_log(WLR_DEBUG, "new layer_surface %p (res %p)",
 			surface, surface->resource);
