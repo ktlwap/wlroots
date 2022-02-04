@@ -335,7 +335,19 @@ static void surface_update_input_region(struct wlr_surface *surface) {
 		0, 0, surface->current.width, surface->current.height);
 }
 
-static void subsurface_parent_commit(struct wlr_subsurface *subsurface);
+static void subsurface_parent_commit_notify(struct wlr_subsurface *subsurface) {
+	if (subsurface->synchronized && subsurface->has_cache) {
+		wlr_surface_unlock_cached(subsurface->surface,
+			subsurface->cached_seq);
+		subsurface->has_cache = false;
+	}
+
+	if (!subsurface->added) {
+		subsurface->added = true;
+		wlr_signal_emit_safe(&subsurface->parent->events.new_subsurface,
+			subsurface);
+	}
+}
 
 static void surface_precommit(struct wlr_surface *surface,
 		struct wlr_surface_state *next) {
@@ -390,23 +402,14 @@ static void surface_commit(struct wlr_surface *surface) {
 	surface_update_opaque_region(surface);
 	surface_update_input_region(surface);
 
-	// commit subsurface order
 	struct wlr_subsurface *subsurface;
 	wl_list_for_each_reverse(subsurface, &surface->pending.subsurfaces_above,
 			pending.link) {
-		wl_list_remove(&subsurface->current.link);
-		wl_list_insert(&surface->current.subsurfaces_above,
-			&subsurface->current.link);
-
-		subsurface_parent_commit(subsurface);
+		subsurface_parent_commit_notify(subsurface);
 	}
 	wl_list_for_each_reverse(subsurface, &surface->pending.subsurfaces_below,
 			pending.link) {
-		wl_list_remove(&subsurface->current.link);
-		wl_list_insert(&surface->current.subsurfaces_below,
-			&subsurface->current.link);
-
-		subsurface_parent_commit(subsurface);
+		subsurface_parent_commit_notify(subsurface);
 	}
 
 	if (surface->role && surface->role->commit) {
@@ -414,47 +417,6 @@ static void surface_commit(struct wlr_surface *surface) {
 	}
 
 	wlr_signal_emit_safe(&surface->events.commit, surface);
-}
-
-static void collect_subsurface_damage_iter(struct wlr_surface *surface,
-		int sx, int sy, void *data) {
-	struct wlr_subsurface *subsurface = data;
-	pixman_region32_t *damage = &subsurface->parent->external_damage;
-	pixman_region32_union_rect(damage, damage,
-		subsurface->current.x + sx,
-		subsurface->current.y + sy,
-		surface->current.width, surface->current.height);
-}
-
-// TODO: untangle from wlr_surface
-static void subsurface_parent_commit(struct wlr_subsurface *subsurface) {
-	struct wlr_surface *surface = subsurface->surface;
-
-	bool moved = subsurface->current.x != subsurface->pending.x ||
-		subsurface->current.y != subsurface->pending.y;
-	if (subsurface->mapped && moved) {
-		wlr_surface_for_each_surface(surface,
-			collect_subsurface_damage_iter, subsurface);
-	}
-
-	if (subsurface->synchronized && subsurface->has_cache) {
-		wlr_surface_unlock_cached(surface, subsurface->cached_seq);
-		subsurface->has_cache = false;
-	}
-
-	subsurface->current.x = subsurface->pending.x;
-	subsurface->current.y = subsurface->pending.y;
-	if (subsurface->mapped && (moved || subsurface->reordered)) {
-		subsurface->reordered = false;
-		wlr_surface_for_each_surface(surface,
-			collect_subsurface_damage_iter, subsurface);
-	}
-
-	if (!subsurface->added) {
-		subsurface->added = true;
-		wlr_signal_emit_safe(&subsurface->parent->events.new_subsurface,
-			subsurface);
-	}
 }
 
 /**
@@ -523,6 +485,25 @@ static void surface_squash_state(struct wlr_surface *surface,
 		wl_list_insert_list(&dst->frame_callback_list,
 			&src->frame_callback_list);
 		wl_list_init(&src->frame_callback_list);
+	}
+
+	// Squash subsurface order
+	struct wlr_subsurface_parent_state *sub_state_dst, *sub_state_src;
+	wl_list_for_each_reverse(sub_state_src, &src->subsurfaces_above, link) {
+		sub_state_dst = wl_container_of(
+			sub_state_src->synced_state.state_link.prev,
+			sub_state_dst, synced_state.state_link);
+		wl_list_remove(&sub_state_dst->link);
+		wl_list_insert(&dst->subsurfaces_above,
+			&sub_state_dst->link);
+	}
+	wl_list_for_each_reverse(sub_state_src, &src->subsurfaces_below, link) {
+		sub_state_dst = wl_container_of(
+			sub_state_src->synced_state.state_link.prev,
+			sub_state_dst, synced_state.state_link);
+		wl_list_remove(&sub_state_dst->link);
+		wl_list_insert(&dst->subsurfaces_below,
+			&sub_state_dst->link);
 	}
 
 	dst->committed |= src->committed;

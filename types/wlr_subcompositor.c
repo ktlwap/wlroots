@@ -8,6 +8,16 @@
 
 #define SUBCOMPOSITOR_VERSION 1
 
+static void collect_subsurface_damage_iter(struct wlr_surface *surface,
+		int sx, int sy, void *data) {
+	struct wlr_subsurface *subsurface = data;
+	pixman_region32_t *damage = &subsurface->parent->external_damage;
+	pixman_region32_union_rect(damage, damage,
+		subsurface->current.x + sx,
+		subsurface->current.y + sy,
+		surface->current.width, surface->current.height);
+}
+
 static bool subsurface_is_synchronized(struct wlr_subsurface *subsurface) {
 	while (subsurface != NULL) {
 		if (subsurface->synchronized) {
@@ -43,7 +53,8 @@ static void subsurface_destroy(struct wlr_subsurface *subsurface) {
 	wl_list_remove(&subsurface->surface_client_commit.link);
 	wl_list_remove(&subsurface->current.link);
 	wl_list_remove(&subsurface->pending.link);
-	wl_list_remove(&subsurface->parent_destroy.link);
+
+	wlr_surface_synced_finish(&subsurface->parent_synced);
 
 	wl_resource_set_user_data(subsurface->resource, NULL);
 	if (subsurface->surface) {
@@ -51,6 +62,72 @@ static void subsurface_destroy(struct wlr_subsurface *subsurface) {
 	}
 	free(subsurface);
 }
+
+static void subsurface_parent_synced_destroy(struct wlr_surface_synced *synced) {
+	struct wlr_subsurface *subsurface =
+		wl_container_of(synced, subsurface, parent_synced);
+	// Once the parent is destroyed, the client has no way to use the
+	// wl_subsurface object anymore, so we can destroy it.
+	subsurface_destroy(subsurface);
+}
+
+static void subsurface_parent_synced_squash_state(
+		struct wlr_surface_synced_state *synced_dst,
+		struct wlr_surface_synced_state *synced_src) {
+	struct wlr_subsurface_parent_state *dst =
+		wl_container_of(synced_dst, dst, synced_state);
+	struct wlr_subsurface_parent_state *src =
+		wl_container_of(synced_src, src, synced_state);
+
+	dst->x = src->x;
+	dst->y = src->y;
+
+	// For the sake of simplicity, copying the position in list is done
+	// by the parent itself
+}
+
+static struct wlr_surface_synced_state *subsurface_parent_synced_create_state(void) {
+	struct wlr_subsurface_parent_state *state = calloc(1, sizeof(*state));
+	if (!state) {
+		return NULL;
+	}
+	wl_list_init(&state->link);
+	return &state->synced_state;
+}
+
+static void subsurface_parent_synced_destroy_state(
+		struct wlr_surface_synced_state *synced_state) {
+	struct wlr_subsurface_parent_state *state =
+		wl_container_of(synced_state, state, synced_state);
+	wl_list_remove(&state->link);
+	free(state);
+}
+
+static void subsurface_parent_synced_precommit(struct wlr_surface_synced *synced,
+		struct wlr_surface_synced_state *synced_state) {
+	struct wlr_subsurface *subsurface =
+		wl_container_of(synced, subsurface, parent_synced);
+	struct wlr_subsurface_parent_state *state =
+		wl_container_of(synced_state, state, synced_state);
+
+	subsurface->previous.x = subsurface->current.x;
+	subsurface->previous.y = subsurface->current.y;
+
+	if (subsurface->mapped && (subsurface->current.x != state->x ||
+			subsurface->current.y != state->y)) {
+		wlr_surface_for_each_surface(subsurface->surface,
+			collect_subsurface_damage_iter, subsurface);
+	}
+}
+
+static const struct wlr_surface_synced_interface subsurface_parent_synced_impl = {
+	.name = "wlr_subsurface parent",
+	.destroy = subsurface_parent_synced_destroy,
+	.squash_state = subsurface_parent_synced_squash_state,
+	.create_state = subsurface_parent_synced_create_state,
+	.destroy_state = subsurface_parent_synced_destroy_state,
+	.precommit = subsurface_parent_synced_precommit,
+};
 
 static const struct wl_subsurface_interface subsurface_implementation;
 
@@ -272,6 +349,13 @@ static void subsurface_role_commit(struct wlr_surface *surface) {
 	}
 
 	subsurface_consider_map(subsurface, true);
+
+	if (subsurface->mapped &&
+			(subsurface->previous.x != subsurface->current.x ||
+			subsurface->previous.y != subsurface->current.y)) {
+		wlr_surface_for_each_surface(surface,
+			collect_subsurface_damage_iter, subsurface);
+	}
 }
 
 static void subsurface_role_precommit(struct wlr_surface *surface,
@@ -293,15 +377,6 @@ const struct wlr_surface_role subsurface_role = {
 	.commit = subsurface_role_commit,
 	.precommit = subsurface_role_precommit,
 };
-
-static void subsurface_handle_parent_destroy(struct wl_listener *listener,
-		void *data) {
-	struct wlr_subsurface *subsurface =
-		wl_container_of(listener, subsurface, parent_destroy);
-	// Once the parent is destroyed, the client has no way to use the
-	// wl_subsurface object anymore, so we can destroy it.
-	subsurface_destroy(subsurface);
-}
 
 static void subsurface_handle_surface_destroy(struct wl_listener *listener,
 		void *data) {
@@ -340,11 +415,21 @@ static struct wlr_subsurface *subsurface_create(struct wlr_surface *surface,
 		wl_client_post_no_memory(client);
 		return NULL;
 	}
+	if (!wlr_surface_synced_init(&subsurface->parent_synced,
+			&subsurface_parent_synced_impl, parent,
+			&subsurface->current.synced_state,
+			&subsurface->pending.synced_state)) {
+		free(subsurface);
+		wl_client_post_no_memory(client);
+		return NULL;
+	}
+
 	subsurface->synchronized = true;
 	subsurface->surface = surface;
 	subsurface->resource =
 		wl_resource_create(client, &wl_subsurface_interface, version, id);
 	if (subsurface->resource == NULL) {
+		wlr_surface_synced_finish(&subsurface->parent_synced);
 		free(subsurface);
 		wl_client_post_no_memory(client);
 		return NULL;
@@ -363,10 +448,7 @@ static struct wlr_subsurface *subsurface_create(struct wlr_surface *surface,
 	subsurface->surface_client_commit.notify =
 		subsurface_handle_surface_client_commit;
 
-	// link parent
 	subsurface->parent = parent;
-	wl_signal_add(&parent->events.destroy, &subsurface->parent_destroy);
-	subsurface->parent_destroy.notify = subsurface_handle_parent_destroy;
 
 	wl_list_init(&subsurface->current.link);
 	wl_list_insert(parent->pending.subsurfaces_above.prev,
@@ -407,7 +489,7 @@ static void subcompositor_handle_get_subsurface(struct wl_client *client,
 			"%s%" PRIu32 ": wl_surface@%" PRIu32 " cannot be its own parent",
 			msg, id, wl_resource_get_id(surface_resource));
 		return;
-	}
+}
 
 	if (wlr_surface_is_subsurface(surface) &&
 			wlr_subsurface_from_wlr_surface(surface) != NULL) {
