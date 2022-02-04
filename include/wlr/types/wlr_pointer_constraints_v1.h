@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include <wayland-server-core.h>
 #include <pixman.h>
+#include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_seat.h>
 #include "pointer-constraints-unstable-v1-protocol.h"
 
@@ -35,6 +36,8 @@ struct wlr_pointer_constraint_v1_state {
 	struct {
 		double x, y;
 	} cursor_hint;
+
+	struct wlr_surface_synced_state synced_state;
 };
 
 struct wlr_pointer_constraint_v1 {
@@ -50,10 +53,11 @@ struct wlr_pointer_constraint_v1 {
 	struct wlr_pointer_constraint_v1_state current, pending;
 
 	struct wl_listener surface_commit;
-	struct wl_listener surface_destroy;
 	struct wl_listener seat_destroy;
 
 	struct wl_list link; // wlr_pointer_constraints_v1::constraints
+
+	struct wlr_surface_synced synced;
 
 	struct {
 		/**
