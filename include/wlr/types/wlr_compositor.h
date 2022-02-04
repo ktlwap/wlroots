@@ -165,6 +165,7 @@ struct wlr_surface {
 		enum wl_output_transform transform;
 		int width, height;
 		int buffer_width, buffer_height;
+		struct wlr_fbox viewport_src;
 	} previous;
 };
 
