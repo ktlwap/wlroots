@@ -323,6 +323,9 @@ static bool egl_init_display(struct wlr_egl *egl, EGLDisplay *display) {
 	egl->exts.IMG_context_priority =
 		check_egl_ext(display_exts_str, "EGL_IMG_context_priority");
 
+	egl->exts.EXT_image_implicit_sync_control =
+		check_egl_ext(display_exts_str, "EGL_EXT_image_implicit_sync_control");
+
 	if (check_egl_ext(display_exts_str, "EGL_KHR_fence_sync") &&
 			check_egl_ext(display_exts_str, "EGL_ANDROID_native_fence_sync")) {
 		load_egl_proc(&egl->procs.eglCreateSyncKHR, "eglCreateSyncKHR");
@@ -683,6 +686,12 @@ EGLImageKHR wlr_egl_create_image_from_dmabuf(struct wlr_egl *egl,
 	attribs[atti++] = attributes->height;
 	attribs[atti++] = EGL_LINUX_DRM_FOURCC_EXT;
 	attribs[atti++] = attributes->format;
+
+	// TODO: switch on conditionally
+	if (egl->exts.EXT_image_implicit_sync_control) {
+		attribs[atti++] = EGL_IMPORT_SYNC_TYPE_EXT;
+		attribs[atti++] = EGL_IMPORT_EXPLICIT_SYNC_EXT;
+	}
 
 	struct {
 		EGLint fd;
