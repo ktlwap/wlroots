@@ -30,6 +30,7 @@
 #include "render/swapchain.h"
 #include "render/wlr_renderer.h"
 #include "util/env.h"
+#include "util/trace.h"
 
 // Output state which needs a KMS commit to be applied
 static const uint32_t COMMIT_OUTPUT_STATE =
@@ -328,6 +329,8 @@ static bool drm_crtc_commit(struct wlr_drm_connector *conn,
 	// Disallow atomic-only flags
 	assert((flags & ~DRM_MODE_PAGE_FLIP_FLAGS) == 0);
 
+	wlr_trace("drm_crtc_commit");
+
 	struct wlr_drm_backend *drm = conn->backend;
 	struct wlr_drm_crtc *crtc = conn->crtc;
 	bool ok = drm->iface->crtc_commit(conn, state, flags, test_only);
@@ -623,7 +626,11 @@ static bool drm_connector_commit(struct wlr_output *output,
 		return false;
 	}
 
-	return drm_connector_commit_state(conn, state);
+	struct wlr_trace_ctx trace_ctx;
+	wlr_trace_begin_ctx(&trace_ctx, "drm_connector_commit_state");
+	bool ok = drm_connector_commit_state(conn, state);
+	wlr_trace_end_ctx(&trace_ctx, "drm_connector_commit_state");
+	return ok;
 }
 
 size_t drm_crtc_get_gamma_lut_size(struct wlr_drm_backend *drm,
