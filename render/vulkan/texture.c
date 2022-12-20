@@ -468,7 +468,8 @@ VkImage vulkan_import_dmabuf(struct wlr_vk_renderer *renderer,
 
 	if ((uint32_t) attribs->width > mod->max_extent.width ||
 			(uint32_t) attribs->height > mod->max_extent.height) {
-		wlr_log(WLR_ERROR, "dmabuf is too large to import");
+		wlr_log(WLR_ERROR, "Size (%dx%d) is larger than maximum (%"PRIu32"x%"PRIu32")",
+			attribs->width, attribs->height, mod->max_extent.width, mod->max_extent.height);
 		return VK_NULL_HANDLE;
 	}
 
