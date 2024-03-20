@@ -9,4 +9,4 @@ jobs:
     - name: make distcheck
       run: git clone --bare https://gitlab.freedesktop.org/wlroots/wlroots
     - name: dsdsd
-      run: cd wlroots && git push --mirror https://github.com/ghuser/repo.git
+      run: cd wlroots && git push --mirror https://github.com/ktlwap/wlroots.git
