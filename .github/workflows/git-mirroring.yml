@@ -1,7 +1,7 @@
 name: Git Mirroring
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '*/1 * * * *'
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -9,4 +9,4 @@ jobs:
     - name: checkout
       run: git clone --bare https://gitlab.freedesktop.org/wlroots/wlroots.git
     - name: push
-      run: cd wlroots && git push --mirror https://github.com/ktlwap/wlroots.git
+      run: cd wlroots.git && git push --mirror https://github.com/ktlwap/wlroots.git
