@@ -1,0 +1,12 @@
+name: Git Mirroring
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: make distcheck
+      run: git clone --bare https://gitlab.freedesktop.org/wlroots/wlroots
+    - name: dsdsd
+      run: cd wlroots && git push --mirror https://github.com/ghuser/repo.git
