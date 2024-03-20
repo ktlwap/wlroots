@@ -10,4 +10,4 @@ jobs:
     - name: checkout
       run: git clone --bare https://gitlab.freedesktop.org/wlroots/wlroots.git
     - name: push
-      run: cd wlroots.git && git push --mirror https://ktlwap:${{ secrets.PASSWORD }}@github.com/ktlwap/wlroots.git
+      run: cd wlroots.git && git push --mirror https://ktlwap:$PASSWORD@github.com/ktlwap/wlroots.git
