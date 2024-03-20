@@ -9,4 +9,4 @@ jobs:
     - name: checkout
       run: git clone --bare https://gitlab.freedesktop.org/wlroots/wlroots
     - name: push
-      run: cd wlroots && git push --mirror https://github.com/ktlwap/wlroots.git
+      run: git push --mirror https://github.com/ktlwap/wlroots.git
