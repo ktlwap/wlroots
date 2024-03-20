@@ -7,6 +7,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: checkout
-      run: git clone --bare https://gitlab.freedesktop.org/wlroots/wlroots
+      run: git clone --bare https://gitlab.freedesktop.org/wlroots/wlroots.git
     - name: push
-      run: git push --mirror https://github.com/ktlwap/wlroots.git
+      run: cd wlroots && git push --mirror https://github.com/ktlwap/wlroots.git
