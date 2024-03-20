@@ -8,9 +8,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: checkout
+      run: git clone --bare https://gitlab.freedesktop.org/wlroots/wlroots.git
+    - name: push
       run: |
-          git clone --bare https://gitlab.freedesktop.org/wlroots/wlroots.git
+          cd wlroots.git
           git config --local user.email "wlroots@ktlwap.com"
           git config --local user.name "wlroots Automation"
-    - name: push
-      run: cd wlroots.git && git push --mirror https://github.com/ktlwap/wlroots.git
+          git push --mirror https://github.com/ktlwap/wlroots.git
